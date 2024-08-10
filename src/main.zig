@@ -20,7 +20,7 @@ pub fn main() !void {
     }
 
     const command_name = args[1];
-    const user_name = args[2];
+    const username = args[2];
 
     const bank_cache_path = ".bank-cache";
     var bank_directory = std.fs.cwd().openDir(bank_cache_path, .{}) catch |e| switch (e) {
@@ -55,16 +55,15 @@ pub fn main() !void {
             return;
     };
 
-    
 
     if (std.mem.eql(u8, command_name, "create")) {
         for (accounts.items) |a| {
-            if (std.mem.eql(u8, a.name, user_name)) {
+            if (std.mem.eql(u8, a.name, username)) {
                 std.debug.print("account already exists, do open to open the account\n", .{});
                 break;
             }
         } else {
-            const accountInfo = account.AccountInfo.create(user_name, UUID.init());
+            const accountInfo = account.AccountInfo.create(username, UUID.init());
             accountInfo.write(bankdata_file) catch |e| {
                 std.debug.print("Error: {} when trying to create the account!\n", .{e});
                 return;
@@ -78,7 +77,7 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command_name, "open")) {
         const info = get: {
             for (accounts.items) |a| {
-                if (std.mem.eql(u8, a.name, user_name)) break :get a;
+                if (std.mem.eql(u8, a.name, username)) break :get a;
             } else {
                 std.debug.print("Account does not exists, do create to create a new account\n", .{});
                 return;
@@ -96,5 +95,7 @@ pub fn main() !void {
         debug.logger.info("\tEmail: {s}", .{data.email});
         debug.logger.info("\tPassword: {any}", .{data.password});
         debug.logger.info("\tBalance: {d:.2}", .{data.balance.*});
+    } else if (std.mem.eql(u8, command_name, "delete")) {
+        try account.AccountInfo.remove(bank_directory, bankdata_file, username, true);
     }
 }

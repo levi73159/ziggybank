@@ -13,6 +13,7 @@ id: *UUID,
 
 const AccountError = error {
     NameTooBig,
+    AccountNotFound,
 };
 pub const ParseError = error {
     FileToBig,
@@ -21,6 +22,43 @@ pub const ParseError = error {
     Invalid,
     EndOfFile,
 } || AccountError;
+
+pub fn remove(directory: std.fs.Dir, file: std.fs.File, name: []const u8, remove_data_file: bool) !void {
+    try file.seekTo(0);
+    var read_buf = file.readToEndAlloc(account_allocator, 2048*2048) catch |e| switch (e) {
+        error.FileTooBig => return ParseError.FileToBig,
+        else => return ParseError.Unexpected
+    };
+    defer account_allocator.free(read_buf);
+
+    
+    // first get the position of the account in the file
+    const account_position = try findAccount(read_buf, name);
+    if (account_position == null) {
+        return error.AccountNotFound;
+    }
+    const end_position: usize = account_position.?.pos + account_position.?.size;
+    // now we have position so we want to read the entire file buffer into memory again and then remove 
+    // the account from it and move the other line to the older positon
+    if (end_position < read_buf.len) { 
+        const ahead = read_buf[end_position..];
+        std.mem.copyForwards(u8, read_buf[account_position.?.pos..], ahead);
+
+        
+        try file.seekTo(0);
+        try file.writeAll(read_buf);
+        try file.setEndPos(ahead.len + account_position.?.pos);
+    } else {
+       try file.setEndPos(account_position.?.pos);
+    }
+
+    if (remove_data_file) {
+        const filename = try std.fmt.allocPrint(account_allocator, "{}", .{account_position.?.self.id.*});
+        defer account_allocator.free(filename);
+
+        try directory.deleteFile(filename);
+    }
+}
 
 /// creates a new account and `@panic`s if we are out of memory;
 pub fn create(name: []const u8, id: UUID) Self {
@@ -92,6 +130,27 @@ pub fn parseFile(file: std.fs.File) ParseError!std.ArrayList(Self) {
         account_list.append(account) catch @panic("Out of Memory!");
     }
     return account_list;
+}
+
+const AccountPositionInfo = struct {
+    self: Self,
+    pos: usize,
+    size: usize,
+};
+/// finds the account position in the file, returns `null` if not found, returns an error if failed to parse the file
+fn findAccount(read_buf: []u8, name: []const u8) ParseError!?AccountPositionInfo {
+    var offset: usize = 0;
+    while (offset < read_buf.len) {
+        var account: Self = undefined;
+        const read_amount = try parse(read_buf[offset..], &account);
+        if (std.mem.eql(u8, account.name, name)) {
+            // we have found the correct account
+            return AccountPositionInfo{ .self = account, .pos = offset, .size = read_amount };
+        }
+
+        offset += read_amount;
+    }
+    return null;
 }
 
 /// must be called at end cause it will free the name and the id bytes
