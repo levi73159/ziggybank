@@ -49,11 +49,11 @@ fn parse(read_buf: []u8, account_out: *Self) ParseError!usize {
         if (i >= name_buffer.len) return error.NameTooBig;
         name_buffer[i] = c;
     }
-    const name = encrypter.decryptBytes(account_allocator, name_buffer[0..i-1], true);
+    const name = encrypter.decryptBytes(account_allocator, name_buffer[0..i-1], true) catch @panic("Out Of Memory!");
     account_allocator.free(name_buffer);
     amount_read += i;    
     // now read the id which is a uid with 16 bytes, uid is not encrypted using postitonal encryption
-    const id = encrypter.decryptBytes(account_allocator, read_buf[i..][0..16], false);
+    const id = encrypter.decryptBytes(account_allocator, read_buf[i..][0..16], false) catch @panic("Out of Memory!");
     defer account_allocator.free(id);
 
     if (id.len != 16) return error.Invalid;
@@ -109,13 +109,13 @@ const WriteAccountError = error {
 pub fn write(self: Self, file: std.fs.File) WriteAccountError!void {
     const writer = file.writer();
     // Parse the int into bytes
-    const encrypted_name = encrypter.encryptBytes(account_allocator, self.name, true);
+    const encrypted_name = encrypter.encryptBytes(account_allocator, self.name, true) catch @panic("Out Of Memory!");
     defer account_allocator.free(encrypted_name);
 
     try writer.writeAll(encrypted_name);
     try writer.writeByte(0);
 
-    const encrypted_uid = encrypter.encryptBytes(account_allocator, &self.id.bytes, false);
+    const encrypted_uid = encrypter.encryptBytes(account_allocator, &self.id.bytes, false) catch @panic("Out Of Memory!");
     defer account_allocator.free(encrypted_uid);
 
     try writer.writeAll(encrypted_uid);

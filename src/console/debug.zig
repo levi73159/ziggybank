@@ -3,8 +3,8 @@ const ansi = @import("ansi/ansi.zig");
 
 const Color = ansi.style.Color;
 pub const ColorSet = struct {
-    fore: Color,
-    back: Color,
+    fore: Color = .default,
+    back: Color = .default,
 
     fn setColor(self: ColorSet) void {
         ansi.style.setForeBack(self.fore, self.back);
@@ -14,9 +14,9 @@ pub const ColorSet = struct {
 pub const ColorScheme = struct {
     const default_scheme: ColorScheme = .{};
 
-    print_color: ColorSet = .{ .fore = .white, .back = .black  },
-    debug_color: ColorSet = .{ .fore = .green, .back = .black },
-    info_color: ColorSet = .{ .fore = .cyan, .back = .black },
+    print_color: ColorSet = .{ .fore = .white },
+    debug_color: ColorSet = .{ .fore = .green },
+    info_color: ColorSet = .{ .fore = .cyan },
     warn_color: ColorSet = .{ .fore = .bright_yellow, .back = .gray },
     err_color: ColorSet = .{ .fore = .red, .back = .gray },
     fatal_color: ColorSet = .{ .fore = .bright_red, .back = .bright_white },

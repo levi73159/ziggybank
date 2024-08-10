@@ -94,7 +94,7 @@ pub fn setFont(font: u4) FontError!void {
 
 
 pub const Color = enum(u32) {
-    black = 30, red, green, yellow, blue, magenta, cyan, white,
+    black = 30, red, green, yellow, blue, magenta, cyan, white, default = 39,
     gray = 90, bright_red, bright_green, bright_yellow, bright_blue, bright_magenta, bright_cyan, bright_white
 };
 

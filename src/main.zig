@@ -2,23 +2,10 @@ const std = @import("std");
 const account = @import("account.zig");
 const UUID = @import("UUID.zig").UUID;
 const cli = @import("console/cli.zig");
+const debug = @import("console/debug.zig");
 
-// fn createAccountCLI() void {
-//     cli.ansi.style.printStyle("create Account! BOLD\n", .bold, .{});
-//     cli.ansi.style.printStyle("create Account! FAINT\n", .faint, .{});
-//     cli.ansi.style.printStyle("create Account! ITALIC\n", .italic, .{});
-//     cli.ansi.style.printStyle("create Account! underline\n", .underline, .{});
-//     cli.ansi.style.printStyle("create Account! slow_blink\n", .slow_blink, .{});
-//     cli.ansi.style.printStyle("create Account! rapid_blink\n", .rapid_blink, .{});
-//     cli.ansi.style.printStyle("create Account! invert\n", .invert, .{});
-//     cli.ansi.style.printStyle("create Account! HIDE\n", .hide, .{});
-//     cli.ansi.style.printStyle("create Account! strike\n", .strike, .{});
-//     cli.ansi.style.printStyle("create Account! double_underline\n", .double_underline, .{});
-//     cli.ansi.style.printStyle("create Account! framed\n", .framed, .{});
-//     cli.ansi.style.printStyle("create Account! encircled\n", .encircled, .{});
-//     cli.ansi.style.printStyle("create Account! overlined\n", .overlined, .{});
-//     cli.ansi.style.printStyle("create Account! superscript", .superscript, .{});
-//     cli.ansi.style.printStyle("create Account! subscript\n", .subscript, .{});
+// fn createAccountCLI(username: []const u8) void {
+//     cli.ansi.style.setBackColor(.bright_red);
 // }
 
 pub fn main() !void {
@@ -104,10 +91,10 @@ pub fn main() !void {
         };
         defer data.close();
 
-        std.debug.print("Account data:\n", .{});
-        std.debug.print("\tName: {s}\n", .{info.name});
-        std.debug.print("\tEmail: {s}\n", .{data.email});
-        std.debug.print("\tPassword: {any}\n", .{data.password});
-        std.debug.print("\tBalance: {d:.2}\n", .{data.balance.*});
+        debug.logger.print("Account data:\n", .{});
+        debug.logger.info("\tName: {s}", .{info.name});
+        debug.logger.info("\tEmail: {s}", .{data.email});
+        debug.logger.info("\tPassword: {any}", .{data.password});
+        debug.logger.info("\tBalance: {d:.2}", .{data.balance.*});
     }
 }
