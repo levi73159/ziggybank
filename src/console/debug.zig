@@ -17,9 +17,9 @@ pub const ColorScheme = struct {
     print_color: ColorSet = .{ .fore = .white },
     debug_color: ColorSet = .{ .fore = .green },
     info_color: ColorSet = .{ .fore = .cyan },
-    warn_color: ColorSet = .{ .fore = .bright_yellow, .back = .gray },
-    err_color: ColorSet = .{ .fore = .red, .back = .gray },
-    fatal_color: ColorSet = .{ .fore = .bright_red, .back = .bright_white },
+    warn_color: ColorSet = .{ .fore = .bright_yellow },
+    err_color: ColorSet = .{ .fore = .red },
+    fatal_color: ColorSet = .{ .fore = .bright_white, .back = .red },
 
     pub fn new(print: ColorSet, debug: ColorSet, info: ColorSet, warn: ColorSet, err: ColorSet, fatal: ColorSet) ColorScheme {
         return ColorScheme{
@@ -45,29 +45,36 @@ pub const Logger = struct {
         };
     }
 
+    const log_function = fn (comptime msg: []const u8, args: anytype) void;
+    inline fn logWrapper(color: ColorSet, log: log_function, comptime msg: []const u8, args: anytype) void {
+        color.setColor();
+        log(msg, args);
+        ansi.style.deafultForeColor();
+        ansi.style.deafultBackColor();
+    }
+
     pub fn print(self: *const Logger, comptime msg: []const u8, args: anytype) void {
-        self.current_scheme.print_color.setColor();
-        std.debug.print(msg, args);
+        logWrapper(self.current_scheme.print_color, std.debug.print, msg, args);
     }
 
     pub fn debug(self: *const Logger, comptime msg: []const u8, args: anytype) void {
-        self.current_scheme.debug_color.setColor();
-        std.log.debug(msg, args);
+        logWrapper(self.current_scheme.debug_color, std.log.debug, msg, args);
     }
 
     pub fn info(self: *const Logger, comptime msg: []const u8, args: anytype) void {
-        self.current_scheme.info_color.setColor();
-        std.log.info(msg, args);
+        logWrapper(self.current_scheme.info_color, std.log.info, msg, args);
     }   
 
+    pub fn warn(self: *const Logger, comptime msg: []const u8, args: anytype) void {
+        logWrapper(self.current_scheme.warn_color, std.log.warn, msg, args);
+    }
+
     pub fn err(self: *const Logger, comptime msg: []const u8, args: anytype) void {
-        self.current_scheme.err_color.setColor();
-        std.log.err(msg, args);
+        logWrapper(self.current_scheme.err_color, std.log.err, msg, args);
     }
     
     pub fn fatal(self: *const Logger, comptime msg: []const u8, args: anytype) void {
-        self.current_scheme.fatal_color.setColor();
-        std.log.err(msg, args);
+        logWrapper(self.current_scheme.fatal_color, std.log.err, msg, args);
     }
 };
 /// The default Logger

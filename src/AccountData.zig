@@ -168,7 +168,6 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
 
     // now we need to get balance which is not encrypted
     const balance = allocator.create(f64) catch return error.OutOfMemory;
-    std.debug.print("{any}\n", .{read_buf[i..]});
     balance.* = std.mem.bytesToValue(f64, read_buf[i..]);
 
     return .{
@@ -183,7 +182,7 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
 // must be called at end of use
 pub fn close(self: *Self) void {
     self.info.close();
-    self.file.close();
+    // self.file.close();
     allocator.free(self.email);
     allocator.free(self.password);
     allocator.destroy(self.balance);

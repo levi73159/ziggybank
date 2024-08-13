@@ -132,3 +132,10 @@ pub fn deafultForeColor() void {
 pub fn deafultBackColor() void {
     selectGraphicRendition(49);
 }
+
+pub fn printColor(comptime format: []const u8, fore: Color, back: Color, args: anytype) void {
+    setForeBack(fore, back);
+    std.debug.print(format, args);
+    deafultForeColor();
+    deafultBackColor();
+}
