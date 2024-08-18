@@ -20,7 +20,7 @@ pub const FileError = error {
     OutOfMemory,
     DeviceBusy,
     FileTooBig,
-    EndOfFile
+    EndOfFile,
 } || UnexpectedError;
 
 pub const CreateError = error {
@@ -29,11 +29,15 @@ pub const CreateError = error {
 } || UnexpectedError || FileError;
 
 pub fn writeToFile(self: *const Self) FileError!void {
+    
+    self.file.seekTo(0) catch |e| switch (e) {
+        error.AccessDenied, error.Unseekable => return error.DeviceBusy,
+        else => return error.Unexpected
+    };
+
     const writer = self.file.writer();
     const encrypted_email = encrypter.encryptBytes(allocator, self.email, true) catch @panic("Out of Memory!");
     defer allocator.free(encrypted_email);
-    self.file.seekTo(0);
-
     const err = write_block: {
         writer.writeAll(encrypted_email) catch |e| break :write_block e;
         writer.writeByte(0) catch |e| break :write_block e;
@@ -57,28 +61,6 @@ pub fn writeToFile(self: *const Self) FileError!void {
 const MoneyError = error {
     NotEnough
 } || FileError;
-
-/// gives the user `amount` of money, if you want to lose money use `loseMoney` 
-/// This can and will return an error, and `save` arg is for deciding wethier or not you want to save that to the file
-/// 
-/// Will return FileError if we save and somthings goes wrong, but if `save` is false this function never returns an error
-pub fn giveMoney(self: *Self, amount: f64, save: bool) FileError!void {
-    self.balance.* +|= amount;
-
-    if (save) try self.writeToFile();
-}
-
-/// Similar to `giveMoney` this will take `amount` of money from the user
-/// This function will return `error.NotEnough` if the `amount` is grater then the current amount we have
-/// 
-/// Will return FileError if we save and somthings goes wrong, but if `save` is false this function never returns an error
-pub fn loseMoney(self: *Self, amount: f64, save: bool) MoneyError!void {
-    if (self.balance.* < amount) return error.NotEnough;
-    
-    self.balance.* -= amount;
-
-    if (save) try self.writeToFile();
-}
 
 /// creates a account
 pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, password: []const u8, balance: f64, auto_hash: bool) CreateError!Self {
@@ -149,7 +131,6 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
         error.BadPathName, error.Unexpected, error.AccessDenied => return error.Undefined,
         else => return error.Unexpected
     };
-    defer file.close();
 
     const read_buf = file.readToEndAlloc(allocator, 1024*1024) catch |err| switch (err) {
         error.FileTooBig => return error.FileTooBig,
@@ -210,7 +191,7 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
 // must be called at end of use
 pub fn close(self: *Self) void {
     self.info.close();
-    // self.file.close();
+    self.file.close();
     allocator.free(self.email);
     allocator.free(self.password);
     allocator.destroy(self.balance);

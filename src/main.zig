@@ -88,6 +88,97 @@ fn transactionCLI(account_data: *account.AccountData, users_lookup: []account.Ac
     }
 }
 
+const WithdrawOptions = enum(u64) {
+    // 10, 20, 50, 100, custom
+    x10 = 10, 
+    x20 = 20,
+    x50 = 50,
+    x100 = 100,
+    all = std.math.maxInt(u64),
+    custom = 0,
+};
+
+fn withdraw(account_data: *account.AccountData) bool {
+    // get the amount of money we want to transaction
+    const option = cli.getOption("Select Option", WithdrawOptions, cli.index_flag | cli.value_flag) catch |err| {
+        debug.logger.err("Failed to get option due to {any}, please try again.", .{err});
+        cli.pause();
+        return false;
+    };
+    
+    const amount_to_take: f64 = blk: {
+        if (option == .custom) {
+            while (true) {
+                const x = cli.readLineAlloc(allocator, "Custom Amount: ", false, 100) catch continue;
+                defer allocator.free(x);
+                const amount = std.fmt.parseFloat(f64, x) catch continue;
+
+                break :blk amount;
+            }
+        } else if (option == .all) {
+            break :blk account_data.balance.*;
+        } else {
+            const int_amount: u64 = @intFromEnum(option);
+            break :blk @floatFromInt(int_amount); // this is a hack to convert the u64 to a f64
+        }
+    };
+
+    // check if we have enought money
+    if (amount_to_take > account_data.balance.*) {
+        debug.logger.fatal("Failed to go throught with withdraw, Reason: Not enough money!", .{});
+        debug.logger.fatal("Aborting!", .{});
+        cli.pause();
+        return false;
+    }
+
+    const conform = cli.getBool("Are you sure?", false) catch |err| {
+        debug.logger.fatal("Failed to proceed with withdraw, Reason: {any}", .{err});
+        debug.logger.fatal("Aborting!", .{});
+        cli.pause();
+        return false;
+    };
+
+    if (conform == false) {
+        debug.logger.info("Withdraw Aborted!", .{});
+        cli.pause();
+        return false;
+    }
+
+    if (amount_to_take == account_data.balance.*) {
+        const double_check = cli.getBool("Are you sure you want to widthdraw all your money?", false) catch |err| {
+            debug.logger.fatal("Failed to proceed with withdraw, Reason: {any}", .{err});
+            debug.logger.fatal("Aborting!", .{});
+            cli.pause();
+            return false;
+        };
+        if (double_check == false) {
+            debug.logger.info("Widthdraw Aborted!", .{});
+            cli.pause();
+            return false;
+        }
+    } else if (amount_to_take > account_data.balance.* - 25) {
+        const double_check = cli.getBool("Are you sure you want to widthdraw that much money?", true) catch |err| {
+            debug.logger.fatal("Failed to Go through with widthdraw, Reason: {any}", .{err});
+            debug.logger.fatal("Aborting!", .{});
+            cli.pause();
+            return false;
+        };
+        if (double_check == false) {
+            debug.logger.info("Widthdraw Aborted!", .{});
+            cli.pause();
+            return false;
+        }
+    } 
+
+    account_data.balance.* -= amount_to_take;
+    account_data.writeToFile() catch |err| {
+        debug.logger.fatal("Failed To Save Widthdraw: {any}", .{err});
+        cli.pause();
+        return false;
+    };
+    return true;
+}
+
 fn accountPanelCLI(account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) void {
     while (true) {
         debug.logger.print("Name: {s}\n", .{account_data.info.name});
@@ -96,18 +187,16 @@ fn accountPanelCLI(account_data: *account.AccountData, users_lookup: []account.A
             debug.logger.err("Hey! Failed to get input cause {any}, try again!", .{err});
             continue;
         }; 
-        switch (option) {
-            .transaction => {
-                const success = transactionCLI(account_data, users_lookup, directory);
-                cli.clear();
-                if (success) {
-                    debug.logger.info("Transaction Complete!", .{});
-                } else {
-                    debug.logger.info("Transaction Aborted!", .{});
-                }
-            },
-            .widthdraw => unreachable,
-            .exit => break
+        const success: bool = switch (option) {
+            .transaction => transactionCLI(account_data, users_lookup, directory),
+            .widthdraw => withdraw(account_data),
+            .exit => return
+        };
+        cli.clear();
+        if (success) {
+            debug.logger.info("{s} Complete!", .{@tagName(option)});
+        } else {
+            debug.logger.info("{s} Aborted!", .{@tagName(option)});
         }
     }
 }

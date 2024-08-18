@@ -90,7 +90,7 @@ pub fn getOption(prompt: []const u8, comptime options: type, comptime flag: u3) 
     inline for (@typeInfo(options).Enum.fields, 0..) |option, index| {
         // try out.writeSeq(.{ "  - ", option.name, "\n" });
         if (use_index) debug.logger.print("{} - ", .{index});
-        debug.logger.print("{s}", .{option.name});
+        if (!use_value or use_name) debug.logger.print("{s}", .{option.name});
         if (use_value) debug.logger.print("({})", .{option.value});
         debug.logger.print("\n", .{});
         if (option.name.len > max_size) max_size = option.name.len;
