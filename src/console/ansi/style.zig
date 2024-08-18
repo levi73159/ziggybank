@@ -2,24 +2,28 @@ const std = @import("std");
 
 const csi = "\x1B[";
 
+inline fn print(comptime format: []const u8, args: anytype) void {
+    std.io.getStdOut().writer().print(format, args) catch return;
+}
+
 fn selectGraphicRendition(n: u32) void {
-    std.debug.print(csi ++ "{}m", .{n});
+    print(csi ++ "{}m", .{n});
 }
 
 fn selectGraphicRenditionArg1(n: u32, arg1: u32) void {
-    std.debug.print(csi ++ "{};{}m", .{n, arg1});
+    print(csi ++ "{};{}m", .{n, arg1});
 }
 
 fn selectGraphicRenditionArg2(n: u32, arg1: u32, arg2: u32) void {
-    std.debug.print(csi ++ "{};{};{}m", .{n, arg1, arg2});
+    print(csi ++ "{};{};{}m", .{n, arg1, arg2});
 }
 
 fn selectGraphicRenditionArg3(n: u32, arg1: u32, arg2: u32, arg3: u32) void {
-    std.debug.print(csi ++ "{};{};{};{}m", .{n, arg1, arg2, arg3});
+    print(csi ++ "{};{};{};{}m", .{n, arg1, arg2, arg3});
 }
 
 fn selectGraphicRenditionArg4(n: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32) void {
-    std.debug.print(csi ++ "{};{};{};{};{}m", .{n, arg1, arg2, arg3, arg4});
+    print(csi ++ "{};{};{};{};{}m", .{n, arg1, arg2, arg3, arg4});
 }
 
 pub fn default() void { selectGraphicRendition(0); }
@@ -70,13 +74,13 @@ pub fn removeStyles(styles: []Style) void {
 
 pub fn printStyles(comptime format: []const u8, styles: []Style, args: anytype) void {
     setStyles(styles);
-    std.debug.print(format, args);
+    print(format, args);
     removeStyles(styles);
 }
 
 pub fn printStyle(comptime format: []const u8, style: Style, args: anytype) void {
     setStyle(style);
-    std.debug.print(format, args);
+    print(format, args);
     removeStyle(style);
 }
 
@@ -135,7 +139,7 @@ pub fn deafultBackColor() void {
 
 pub fn printColor(comptime format: []const u8, fore: Color, back: Color, args: anytype) void {
     setForeBack(fore, back);
-    std.debug.print(format, args);
+    print(format, args);
     deafultForeColor();
     deafultBackColor();
 }

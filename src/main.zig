@@ -9,6 +9,109 @@ const style = cli.ansi.style;
 
 const allocator = std.heap.page_allocator;
 
+const UserOptions = enum {
+    transaction,
+    widthdraw,
+    exit
+};
+
+inline fn getAccount(name: []u8, users_lookup: []account.AccountInfo) ?account.AccountInfo {
+    for (users_lookup) |user| {
+        if (std.mem.eql(u8, name, user.name)) return user;
+    }
+    return null;
+}
+
+fn transactionCLI(account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) bool {
+    // get the name from the user
+    while (true) {
+        const reciver_name = cli.readLineAlloc(allocator, "Send Money To? ", false, account.AccountInfo.name_max_length) catch continue;
+        defer allocator.free(reciver_name);
+
+        const reciver_user = getAccount(reciver_name, users_lookup);   
+        if (reciver_user == null) {
+            debug.logger.err("User not found! Try Again!", .{});
+            continue;
+        }
+        
+        const reciver_data = account.AccountData.open(directory, reciver_user.?) catch |err| {
+            debug.logger.fatal("{any}", .{err});
+            cli.pause(); // pause so the user can see the error
+            return false;
+        };
+        
+        const amount_to_give = blk: {
+            while (true) {
+                const x = cli.readLineAlloc(allocator, "Amount: ", false, 100) catch continue;
+                defer allocator.free(x);
+                const amount = std.fmt.parseFloat(f64, x) catch continue;
+
+                break :blk amount;
+            }
+        };
+
+        if (amount_to_give > account_data.balance.*) {
+            debug.logger.fatal("Failed to go throught with transaction, Reason: Not enought money!", .{});
+            debug.logger.fatal("Aborting!", .{});
+            cli.pause();
+            return false;
+        }
+
+        
+        // now we want to check if the user is sure about the transaction
+        debug.logger.info("We are giving {d:.2} and to {s} and have {d:.2} currently!", .{amount_to_give, reciver_name, account_data.balance.*});
+        debug.logger.info("After we will have {d:.2}", .{account_data.balance.* - amount_to_give});
+        const conform = cli.getBool("Are you sure?", false) catch |err| {
+            debug.logger.fatal("Failed to Go through with transaction, Reason: {any}", .{err});
+            debug.logger.fatal("Aborting!", .{});
+            cli.pause();
+            return false;
+        };
+
+        if (conform) {
+            reciver_data.balance.* += amount_to_give;
+            account_data.balance.* -= amount_to_give;
+            account_data.writeToFile() catch |err| {
+                debug.logger.fatal("Failed To Save Transaction: {any}", .{err});
+                return false;
+            };
+            reciver_data.writeToFile() catch |err| {
+                debug.logger.fatal("Failed To Save Transaction: {any}", .{err});
+                return false;
+            };
+            // OLD: debug.logger.info("Transaction Complete!", .{});
+            return true;
+        } else {
+            // OLD: debug.logger.info("Transaction Aborted!", .{});
+            return false;
+        }
+    }
+}
+
+fn accountPanelCLI(account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) void {
+    while (true) {
+        debug.logger.print("Name: {s}\n", .{account_data.info.name});
+        debug.logger.print("Balance: {d:.2}\n", .{account_data.balance.*});
+        const option = cli.getOption("Select Option", UserOptions, cli.index_flag | cli.name_flag) catch |err| {
+            debug.logger.err("Hey! Failed to get input cause {any}, try again!", .{err});
+            continue;
+        }; 
+        switch (option) {
+            .transaction => {
+                const success = transactionCLI(account_data, users_lookup, directory);
+                cli.clear();
+                if (success) {
+                    debug.logger.info("Transaction Complete!", .{});
+                } else {
+                    debug.logger.info("Transaction Aborted!", .{});
+                }
+            },
+            .widthdraw => unreachable,
+            .exit => break
+        }
+    }
+}
+
 fn createAccountCLI(username: []const u8, file: std.fs.File, directory: std.fs.Dir) !account.AccountData {
     style.setForeColor(.bright_white);
     style.printStyle("Creating an account named {s}!\n", .bold, .{username});
@@ -42,7 +145,7 @@ fn loginCLI(maybe_username: ?[]const u8, users_lookup: []account.AccountInfo, di
 
     const password = blk: {
         while(true) {
-            std.debug.print("password: ", .{});
+            debug.logger.print("password: ", .{});
             const pas = cli.readLineAlloc(allocator, null, true, account.AccountInfo.name_max_length) catch continue;
             break :blk pas;
         }
@@ -74,6 +177,8 @@ pub fn main() !void {
     }
     const command_name: []u8 = args[1];
     const username: ?[]u8 = if (args.len > 2) args[2] else null;
+    // const command_name = "open";
+    // const username: ?[]u8 = null;
 
     const bank_cache_path = ".bank-cache";
     var bank_directory = std.fs.cwd().openDir(bank_cache_path, .{}) catch |e| switch (e) {
@@ -92,10 +197,7 @@ pub fn main() !void {
     };
     defer bankdata_file.close();
 
-    // var int_bytes = [4]u8{0,0,0,0};
-    // std.mem.writeInt(u32, &int_bytes, 3251, .big);
-    // std.debug.print("{any}\n", .{int_bytes});
-
+    debug.logger.info("parsing account...", .{});
     const accounts = account.AccountInfo.parseFile(bankdata_file) catch |err|{ 
         switch (err) {
             error.FileToBig => debug.logger.err("File have reached max capacity!", .{}),
@@ -141,9 +243,9 @@ pub fn main() !void {
             std.process.exit(1);
         };
         if (success) {
-            debug.logger.info("Login success!", .{});
+            accountPanelCLI(&userdata, accounts.items, bank_directory);
         } else {
-            debug.logger.err("Invalid Username or Passsowrd!", .{});
+            debug.logger.err("Invalid Username or Passowrd!", .{});
             std.process.exit(1);
         }
     } else if (std.mem.eql(u8, command_name, "delete")) {
@@ -153,5 +255,8 @@ pub fn main() !void {
             std.process.exit(1);
         }
         try account.AccountInfo.remove(bank_directory, bankdata_file, username.?, true);
+    }else {
+        debug.logger.fatal("Unknown command: {s}", .{command_name});
+        std.process.exit(1);
     }
 }   

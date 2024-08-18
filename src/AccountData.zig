@@ -28,10 +28,11 @@ pub const CreateError = error {
     AccountAlreadyExists,
 } || UnexpectedError || FileError;
 
-fn writeToFile(self: *const Self) FileError!void {
+pub fn writeToFile(self: *const Self) FileError!void {
     const writer = self.file.writer();
     const encrypted_email = encrypter.encryptBytes(allocator, self.email, true) catch @panic("Out of Memory!");
     defer allocator.free(encrypted_email);
+    self.file.seekTo(0);
 
     const err = write_block: {
         writer.writeAll(encrypted_email) catch |e| break :write_block e;
@@ -53,10 +54,35 @@ fn writeToFile(self: *const Self) FileError!void {
     }
 }
 
+const MoneyError = error {
+    NotEnough
+} || FileError;
+
+/// gives the user `amount` of money, if you want to lose money use `loseMoney` 
+/// This can and will return an error, and `save` arg is for deciding wethier or not you want to save that to the file
+/// 
+/// Will return FileError if we save and somthings goes wrong, but if `save` is false this function never returns an error
+pub fn giveMoney(self: *Self, amount: f64, save: bool) FileError!void {
+    self.balance.* +|= amount;
+
+    if (save) try self.writeToFile();
+}
+
+/// Similar to `giveMoney` this will take `amount` of money from the user
+/// This function will return `error.NotEnough` if the `amount` is grater then the current amount we have
+/// 
+/// Will return FileError if we save and somthings goes wrong, but if `save` is false this function never returns an error
+pub fn loseMoney(self: *Self, amount: f64, save: bool) MoneyError!void {
+    if (self.balance.* < amount) return error.NotEnough;
+    
+    self.balance.* -= amount;
+
+    if (save) try self.writeToFile();
+}
+
 /// creates a account
 pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, password: []const u8, balance: f64, auto_hash: bool) CreateError!Self {
     const filename = std.fmt.allocPrint(allocator, "{}", .{info.id.*}) catch return CreateError.OutOfMemory;
-    std.debug.print("{s}", .{filename});
     defer allocator.free(filename);
 
 
@@ -83,6 +109,8 @@ pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, passw
 
 pub fn createEmpty(directory: std.fs.Dir, info: AccountInfo, password: []const u8, auto_hash: bool) CreateError!Self {
     const filename = std.fmt.allocPrint(allocator, "{}", .{info.id.*}) catch return CreateError.OutOfMemory;
+    defer allocator.free(filename);
+
     const file = directory.createFile(filename, .{ .read = true, .mode = 0o666 }) catch |err| switch (err) {
         error.PathAlreadyExists, error.DeviceBusy => return error.AccountAlreadyExists,
         error.NameTooLong, error.FileTooBig, error.NoSpaceLeft => return error.OutOfMemory,
@@ -186,9 +214,4 @@ pub fn close(self: *Self) void {
     allocator.free(self.email);
     allocator.free(self.password);
     allocator.destroy(self.balance);
-}
-
-pub fn update(self: Self) Self {
-    _ = self;
-    @compileError("Function is undefined!");
 }
