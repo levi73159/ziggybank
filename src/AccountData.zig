@@ -8,6 +8,7 @@ const undefined_email = "UNDEFINED";
 
 // everthing will be created manually, we will have to free everything in this structure
 // and will free the stuff in the acount info to
+is_admin: bool = false,
 info: AccountInfo,
 email: []const u8, // this will be encrypted
 password: []const u8, // this will only be hashed we wont ever store the actual account password
@@ -58,9 +59,24 @@ pub fn writeToFile(self: *const Self) FileError!void {
     }
 }
 
-const MoneyError = error {
-    NotEnough
-} || FileError;
+/// return `FileError` if failed to save
+pub fn giveMoney(account_data: *Self, money: f64) FileError!void {
+    account_data.balance.* += money;
+    try account_data.writeToFile();
+}
+
+// this functions will check if the user is an admin by using an array of usernames
+fn isAdmin(username: []const u8) bool {
+    const admins = [_][]const u8 {
+        "admin_levi",
+        "admin"
+    };
+
+    for (admins) |admin| {
+        if (std.mem.eql(u8, username, admin)) return true;
+    }
+    return false;
+}
 
 /// creates a account
 pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, password: []const u8, balance: f64, auto_hash: bool) CreateError!Self {
@@ -83,7 +99,8 @@ pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, passw
         .email = dupe_email,
         .password = dupe_password,
         .balance = dupe_balance,
-        .file = file
+        .file = file,
+        .is_admin = isAdmin(info.name)
     };
     try account.writeToFile();
     return account;
@@ -109,7 +126,8 @@ pub fn createEmpty(directory: std.fs.Dir, info: AccountInfo, password: []const u
         .email = email,
         .password = dupe_password,
         .balance = balance,
-        .file = file
+        .file = file,
+        .is_admin = isAdmin(info.name)
     };
     try account.writeToFile();
     return account;
@@ -184,15 +202,20 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
         .email = email,
         .password = password,
         .balance = balance,
-        .file = file
+        .file = file,
+        .is_admin = isAdmin(info.name)
     };
 }
 
 // must be called at end of use
 pub fn close(self: *Self) void {
-    self.info.close();
-    self.file.close();
+    self.file.close();                                          
     allocator.free(self.email);
     allocator.free(self.password);
     allocator.destroy(self.balance);
+}
+
+pub fn closeAll(self: *Self) void {
+    self.info.close();
+    self.close();
 }

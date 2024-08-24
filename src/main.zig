@@ -2,6 +2,7 @@ const std = @import("std");
 const account = @import("account.zig");
 const UUID = @import("UUID.zig").UUID;
 const cli = @import("console/cli.zig");
+const panels = @import("cliPanels.zig");
 const debug = @import("console/debug.zig");
 const hashEqual = @import("encrypter.zig").hashEqual;
 
@@ -9,252 +10,60 @@ const style = cli.ansi.style;
 
 const allocator = std.heap.page_allocator;
 
-const UserOptions = enum {
-    transaction,
-    widthdraw,
+const StartOptions = enum {
+    signup,
+    login,
     exit
 };
 
-inline fn getAccount(name: []u8, users_lookup: []account.AccountInfo) ?account.AccountInfo {
-    for (users_lookup) |user| {
-        if (std.mem.eql(u8, name, user.name)) return user;
-    }
-    return null;
-}
-
-fn transactionCLI(account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) bool {
-    // get the name from the user
+fn mainPanel(accounts: *std.ArrayList(account.AccountInfo), bank_directory: std.fs.Dir, bankdata_file: std.fs.File) void {
     while (true) {
-        const reciver_name = cli.readLineAlloc(allocator, "Send Money To? ", false, account.AccountInfo.name_max_length) catch continue;
-        defer allocator.free(reciver_name);
-
-        const reciver_user = getAccount(reciver_name, users_lookup);   
-        if (reciver_user == null) {
-            debug.logger.err("User not found! Try Again!", .{});
+        const option: StartOptions = cli.getOption("Option: ", StartOptions, cli.index_flag | cli.name_flag) catch |err| {
+            debug.logger.err("Failed to get option due to: {any}. Try Again!", .{err});
             continue;
-        }
-        
-        const reciver_data = account.AccountData.open(directory, reciver_user.?) catch |err| {
-            debug.logger.fatal("{any}", .{err});
-            cli.pause(); // pause so the user can see the error
-            return false;
         };
-        
-        const amount_to_give = blk: {
-            while (true) {
-                const x = cli.readLineAlloc(allocator, "Amount: ", false, 100) catch continue;
-                defer allocator.free(x);
-                const amount = std.fmt.parseFloat(f64, x) catch continue;
-
-                break :blk amount;
-            }
-        };
-
-        if (amount_to_give > account_data.balance.*) {
-            debug.logger.fatal("Failed to go throught with transaction, Reason: Not enought money!", .{});
-            debug.logger.fatal("Aborting!", .{});
-            cli.pause();
-            return false;
-        }
-
-        
-        // now we want to check if the user is sure about the transaction
-        debug.logger.info("We are giving {d:.2} and to {s} and have {d:.2} currently!", .{amount_to_give, reciver_name, account_data.balance.*});
-        debug.logger.info("After we will have {d:.2}", .{account_data.balance.* - amount_to_give});
-        const conform = cli.getBool("Are you sure?", false) catch |err| {
-            debug.logger.fatal("Failed to Go through with transaction, Reason: {any}", .{err});
-            debug.logger.fatal("Aborting!", .{});
-            cli.pause();
-            return false;
-        };
-
-        if (conform) {
-            reciver_data.balance.* += amount_to_give;
-            account_data.balance.* -= amount_to_give;
-            account_data.writeToFile() catch |err| {
-                debug.logger.fatal("Failed To Save Transaction: {any}", .{err});
-                return false;
-            };
-            reciver_data.writeToFile() catch |err| {
-                debug.logger.fatal("Failed To Save Transaction: {any}", .{err});
-                return false;
-            };
-            // OLD: debug.logger.info("Transaction Complete!", .{});
-            return true;
-        } else {
-            // OLD: debug.logger.info("Transaction Aborted!", .{});
-            return false;
+        var userdata: account.AccountData = undefined;
+        switch (option) {
+            .login => {
+                const success = panels.loginCLI(allocator, null, accounts.items, bank_directory, &userdata) catch |err| {
+                    switch (err) {
+                        error.AccountFileNotFound => debug.logger.err("Account Not Found!", .{}),
+                        error.TextTooBig => debug.logger.err("Text Too Big!", .{}),
+                        error.EndOfFile =>  debug.logger.err("Unexpected End Of File!", .{}),
+                        error.Undefined => debug.logger.err("Undefined Behiavor!", .{}),
+                        error.Unexpected => debug.logger.err("Unexpected Error!", .{}),
+                        else => debug.logger.err("{any}", .{err})
+                    }
+                    return;
+                };
+                if (success) {
+                    cli.bell();
+                    panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+                } else {
+                    debug.logger.err("Invalid Username or Passowrd!", .{});
+                }
+            },
+            .signup => {
+                const success = panels.signupCLI(allocator, null, accounts.items, bankdata_file, bank_directory, &userdata) catch |err| {
+                    debug.logger.err("{any} when creating account!", .{err});
+                    continue;
+                };
+                if (success) {
+                    cli.bell();
+                    accounts.append(userdata.info) catch |err| {
+                        debug.logger.err("Failed to append account to list due to: {any}", .{err});
+                        continue;
+                    };
+                    panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+                } else {
+                    debug.logger.err("Signup failed!", .{});
+                }
+            },
+            .exit => return,
         }
     }
 }
 
-const WithdrawOptions = enum(u64) {
-    // 10, 20, 50, 100, custom
-    x10 = 10, 
-    x20 = 20,
-    x50 = 50,
-    x100 = 100,
-    all = std.math.maxInt(u64),
-    custom = 0,
-};
-
-fn withdraw(account_data: *account.AccountData) bool {
-    // get the amount of money we want to transaction
-    const option = cli.getOption("Select Option", WithdrawOptions, cli.index_flag | cli.value_flag) catch |err| {
-        debug.logger.err("Failed to get option due to {any}, please try again.", .{err});
-        cli.pause();
-        return false;
-    };
-    
-    const amount_to_take: f64 = blk: {
-        if (option == .custom) {
-            while (true) {
-                const x = cli.readLineAlloc(allocator, "Custom Amount: ", false, 100) catch continue;
-                defer allocator.free(x);
-                const amount = std.fmt.parseFloat(f64, x) catch continue;
-
-                break :blk amount;
-            }
-        } else if (option == .all) {
-            break :blk account_data.balance.*;
-        } else {
-            const int_amount: u64 = @intFromEnum(option);
-            break :blk @floatFromInt(int_amount); // this is a hack to convert the u64 to a f64
-        }
-    };
-
-    // check if we have enought money
-    if (amount_to_take > account_data.balance.*) {
-        debug.logger.fatal("Failed to go throught with withdraw, Reason: Not enough money!", .{});
-        debug.logger.fatal("Aborting!", .{});
-        cli.pause();
-        return false;
-    }
-
-    const conform = cli.getBool("Are you sure?", false) catch |err| {
-        debug.logger.fatal("Failed to proceed with withdraw, Reason: {any}", .{err});
-        debug.logger.fatal("Aborting!", .{});
-        cli.pause();
-        return false;
-    };
-
-    if (conform == false) {
-        debug.logger.info("Withdraw Aborted!", .{});
-        cli.pause();
-        return false;
-    }
-
-    if (amount_to_take == account_data.balance.*) {
-        const double_check = cli.getBool("Are you sure you want to widthdraw all your money?", false) catch |err| {
-            debug.logger.fatal("Failed to proceed with withdraw, Reason: {any}", .{err});
-            debug.logger.fatal("Aborting!", .{});
-            cli.pause();
-            return false;
-        };
-        if (double_check == false) {
-            debug.logger.info("Widthdraw Aborted!", .{});
-            cli.pause();
-            return false;
-        }
-    } else if (amount_to_take > account_data.balance.* - 25) {
-        const double_check = cli.getBool("Are you sure you want to widthdraw that much money?", true) catch |err| {
-            debug.logger.fatal("Failed to Go through with widthdraw, Reason: {any}", .{err});
-            debug.logger.fatal("Aborting!", .{});
-            cli.pause();
-            return false;
-        };
-        if (double_check == false) {
-            debug.logger.info("Widthdraw Aborted!", .{});
-            cli.pause();
-            return false;
-        }
-    } 
-
-    account_data.balance.* -= amount_to_take;
-    account_data.writeToFile() catch |err| {
-        debug.logger.fatal("Failed To Save Widthdraw: {any}", .{err});
-        cli.pause();
-        return false;
-    };
-    return true;
-}
-
-fn accountPanelCLI(account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) void {
-    while (true) {
-        debug.logger.print("Name: {s}\n", .{account_data.info.name});
-        debug.logger.print("Balance: {d:.2}\n", .{account_data.balance.*});
-        const option = cli.getOption("Select Option", UserOptions, cli.index_flag | cli.name_flag) catch |err| {
-            debug.logger.err("Hey! Failed to get input cause {any}, try again!", .{err});
-            continue;
-        }; 
-        const success: bool = switch (option) {
-            .transaction => transactionCLI(account_data, users_lookup, directory),
-            .widthdraw => withdraw(account_data),
-            .exit => return
-        };
-        cli.clear();
-        if (success) {
-            debug.logger.info("{s} Complete!", .{@tagName(option)});
-        } else {
-            debug.logger.info("{s} Aborted!", .{@tagName(option)});
-        }
-    }
-}
-
-fn createAccountCLI(username: []const u8, file: std.fs.File, directory: std.fs.Dir) !account.AccountData {
-    style.setForeColor(.bright_white);
-    style.printStyle("Creating an account named {s}!\n", .bold, .{username});
-    style.setForeColor(.cyan);
-    cli.bell();
-    const email = try cli.readLineAlloc(allocator, "(optional) email? ", false, account.AccountInfo.name_max_length);
-    const password = try cli.readLineAlloc(allocator, "password? ", true, account.AccountInfo.name_max_length);
-    defer allocator.free(email);
-    defer allocator.free(password);
-
-    const info = account.AccountInfo.create(username, UUID.init());
-    try info.write(file);
-
-    // create copys the strings so we need to free the email n password
-    return account.AccountData.create(directory, info, email, password, 0, true);
-}
-
-// return false if user not found
-fn loginCLI(maybe_username: ?[]const u8, users_lookup: []account.AccountInfo, directory: std.fs.Dir, out_data: *account.AccountData) !bool {
-    const username = blk: {
-        if (maybe_username) |un| {
-            break :blk try allocator.dupe(u8, un);
-        } else {
-            while(true) {
-                const un = cli.readLineAlloc(allocator, "username: ", false, account.AccountInfo.name_max_length) catch continue;
-                break :blk un;
-            }
-        }
-    };
-    defer allocator.free(username);
-
-    const password = blk: {
-        while(true) {
-            debug.logger.print("password: ", .{});
-            const pas = cli.readLineAlloc(allocator, null, true, account.AccountInfo.name_max_length) catch continue;
-            break :blk pas;
-        }
-    };
-    defer allocator.free(password);
-
-    // see if the user exists
-    out_data.* = blk: for (users_lookup) |user_info| {
-        if (std.mem.eql(u8, username, user_info.name)) {
-            // get the data
-            break :blk try account.AccountData.open(directory, user_info);
-        }
-    } else return false;
-
-    if (!(hashEqual(allocator, out_data.*.password, password) catch unreachable)) {
-        return false; // password not equal
-    }
-
-    return true;
-}
 
 pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
@@ -287,7 +96,7 @@ pub fn main() !void {
     defer bankdata_file.close();
 
     debug.logger.info("parsing account...", .{});
-    const accounts = account.AccountInfo.parseFile(bankdata_file) catch |err|{ 
+    var accounts = account.AccountInfo.parseFile(bankdata_file) catch |err|{ 
         switch (err) {
             error.FileToBig => debug.logger.err("File have reached max capacity!", .{}),
             error.NameTooBig => debug.logger.err("Name too big! max name size is {}", .{account.AccountInfo.name_max_length}),
@@ -301,26 +110,19 @@ pub fn main() !void {
 
 
     if (std.mem.eql(u8, command_name, "create")) {
-        if (username == null) {
-            debug.logger.err("Must specify username!", .{});
-            debug.logger.info("Usage: {s} create <username>", .{args[0]});
+        var userdata: account.AccountData = undefined;
+        const success = panels.signupCLI(allocator, username, accounts.items, bankdata_file, bank_directory, &userdata) catch |err| {
+            debug.logger.err("{any} when creating account!", .{err});
+            std.process.exit(1);
+        };
+        if (!success) {
+            debug.logger.err("Signup failed!", .{});
             std.process.exit(1);
         }
-        for (accounts.items) |a| {
-            if (std.mem.eql(u8, a.name, username.?)) {
-                debug.logger.debug("Account already exists, do open to open the account", .{});
-                break;
-            }
-        } else {
-            var data = createAccountCLI(username.?, bankdata_file, bank_directory) catch |e| {
-                debug.logger.err("{} when trying to open the account data!", .{e});
-                return;
-            };
-            defer data.close();
-        }
+        panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
     } else if (std.mem.eql(u8, command_name, "open")) {
         var userdata: account.AccountData = undefined;
-        const success = loginCLI(username, accounts.items, bank_directory, &userdata) catch |err| {
+        const success = panels.loginCLI(allocator, username, accounts.items, bank_directory, &userdata) catch |err| {
             switch (err) {
                 error.AccountFileNotFound => debug.logger.err("Account Not Found!", .{}),
                 error.TextTooBig => debug.logger.err("Text Too Big!", .{}),
@@ -332,11 +134,13 @@ pub fn main() !void {
             std.process.exit(1);
         };
         if (success) {
-            accountPanelCLI(&userdata, accounts.items, bank_directory);
+            panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
         } else {
             debug.logger.err("Invalid Username or Passowrd!", .{});
             std.process.exit(1);
         }
+    } else if (std.mem.eql(u8, command_name, "start")) {
+        mainPanel(&accounts, bank_directory, bankdata_file);
     } else if (std.mem.eql(u8, command_name, "delete")) {
         if (username == null) {
             debug.logger.err("Must specify username!", .{});

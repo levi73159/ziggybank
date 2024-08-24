@@ -183,3 +183,10 @@ pub fn write(self: Self, file: std.fs.File) WriteAccountError!void {
 pub fn writeMultiple(file: std.fs.File, accounts: []Self) !void { 
     for (accounts) |acount| try acount.write(file);
 }
+
+pub inline fn getAccount(name: []const u8, users_lookup: []Self) ?Self {
+    for (users_lookup) |user| {
+        if (std.mem.eql(u8, name, user.name)) return user;
+    }
+    return null;
+}

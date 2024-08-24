@@ -51,6 +51,7 @@ pub fn pause() void {
     _ = std.io.getStdIn().reader().readByte() catch return;
 }
 
+
 pub fn readLineAlloc(allocator: std.mem.Allocator, askstr: ?[]const u8, hide_input: bool, max_size: usize) ![]u8 {
     const in = std.io.getStdIn().reader();
 
@@ -59,7 +60,7 @@ pub fn readLineAlloc(allocator: std.mem.Allocator, askstr: ?[]const u8, hide_inp
 
     const result = try in.readUntilDelimiterAlloc(allocator, '\n', max_size);
     
-    if (hide_input) ansi.style.removeStyle(.hide);
+    if (hide_input) ansi.style.default();
     return if (std.mem.endsWith(u8, result, "\r")) result[0..(result.len - 1)] else result;
 }
 
@@ -102,8 +103,9 @@ pub fn getOption(prompt: []const u8, comptime options: type, comptime flag: u3) 
         var buffer: [max_size + 1]u8 = undefined;
 
         // try out.writeSeq(.{ Fg.DarkGray, "\n>", " " });
-        ansi.style.setForeColor(.black);
+        ansi.style.setForeColor(.gray);
         ansi.style.printStyle("{s}: ", .bold, .{prompt});
+        ansi.style.deafultForeColor();
 
         var result = (in.readUntilDelimiterOrEof(&buffer, '\n') catch {
             try in.skipUntilDelimiterOrEof('\n');
