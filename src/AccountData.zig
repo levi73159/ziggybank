@@ -207,7 +207,7 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
     };
 }
 
-// must be called at end of use
+/// Frees all the memory. must be called at end of use
 pub fn close(self: *Self) void {
     self.file.close();                                          
     allocator.free(self.email);
@@ -215,6 +215,7 @@ pub fn close(self: *Self) void {
     allocator.destroy(self.balance);
 }
 
+/// Frees all the memory including the info
 pub fn closeAll(self: *Self) void {
     self.info.close();
     self.close();

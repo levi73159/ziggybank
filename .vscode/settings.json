@@ -1,3 +1,8 @@
 {
-    "codium.codeCompletion.enable": true
+  "codium.codeCompletion.enable": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnPaste": true,
+  "editor.formatOnSaveMode": "file",
+  "[zig]": {
+  }
 }

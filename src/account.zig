@@ -3,6 +3,8 @@ const cli = @import("console/cli.zig");
 const debug = @import("console/debug.zig");
 pub const AccountData = @import("AccountData.zig");
 pub const AccountInfo = @import("AccountInfo.zig");
+pub const name_max_length = AccountInfo.name_max_length;
+pub const email_max_length = 1280; // 256 * 5 = 1280
 
 pub fn printUsersToScreen(users_lookup: []AccountInfo, directory: std.fs.Dir, exclude: ?*AccountData) void {
     if (exclude) |data| {

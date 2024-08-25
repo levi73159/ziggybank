@@ -10,11 +10,7 @@ const style = cli.ansi.style;
 
 const allocator = std.heap.page_allocator;
 
-const StartOptions = enum {
-    signup,
-    login,
-    exit
-};
+const StartOptions = enum { signup, login, exit };
 
 fn mainPanel(accounts: *std.ArrayList(account.AccountInfo), bank_directory: std.fs.Dir, bankdata_file: std.fs.File) void {
     while (true) {
@@ -29,16 +25,16 @@ fn mainPanel(accounts: *std.ArrayList(account.AccountInfo), bank_directory: std.
                     switch (err) {
                         error.AccountFileNotFound => debug.logger.err("Account Not Found!", .{}),
                         error.TextTooBig => debug.logger.err("Text Too Big!", .{}),
-                        error.EndOfFile =>  debug.logger.err("Unexpected End Of File!", .{}),
+                        error.EndOfFile => debug.logger.err("Unexpected End Of File!", .{}),
                         error.Undefined => debug.logger.err("Undefined Behiavor!", .{}),
                         error.Unexpected => debug.logger.err("Unexpected Error!", .{}),
-                        else => debug.logger.err("{any}", .{err})
+                        else => debug.logger.err("{any}", .{err}),
                     }
                     return;
                 };
                 if (success) {
                     cli.bell();
-                    panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+                    panels.openUserPanelCLI(allocator, &userdata, accounts, bankdata_file, bank_directory);
                 } else {
                     debug.logger.err("Invalid Username or Passowrd!", .{});
                 }
@@ -54,7 +50,7 @@ fn mainPanel(accounts: *std.ArrayList(account.AccountInfo), bank_directory: std.
                         debug.logger.err("Failed to append account to list due to: {any}", .{err});
                         continue;
                     };
-                    panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+                    panels.openUserPanelCLI(allocator, &userdata, accounts, bankdata_file, bank_directory);
                 } else {
                     debug.logger.err("Signup failed!", .{});
                 }
@@ -63,7 +59,6 @@ fn mainPanel(accounts: *std.ArrayList(account.AccountInfo), bank_directory: std.
         }
     }
 }
-
 
 pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
@@ -84,30 +79,29 @@ pub fn main() !void {
             try std.fs.cwd().makeDir(bank_cache_path);
             break :make try std.fs.cwd().openDir(bank_cache_path, .{});
         },
-        else => return e
+        else => return e,
     };
     defer bank_directory.close();
 
     const bankdata_filename = "banking.dat";
-    const bankdata_file = bank_directory.openFile(bankdata_filename, .{.mode = .read_write}) catch |e| switch (e) {
-        error.FileNotFound => try bank_directory.createFile(bankdata_filename, .{.read=true, .mode=0o666}),
-        else => return e
+    const bankdata_file = bank_directory.openFile(bankdata_filename, .{ .mode = .read_write }) catch |e| switch (e) {
+        error.FileNotFound => try bank_directory.createFile(bankdata_filename, .{ .read = true, .mode = 0o666 }),
+        else => return e,
     };
     defer bankdata_file.close();
 
     debug.logger.info("parsing account...", .{});
-    var accounts = account.AccountInfo.parseFile(bankdata_file) catch |err|{ 
+    var accounts = account.AccountInfo.parseFile(bankdata_file) catch |err| {
         switch (err) {
             error.FileToBig => debug.logger.err("File have reached max capacity!", .{}),
-            error.NameTooBig => debug.logger.err("Name too big! max name size is {}", .{account.AccountInfo.name_max_length}),
+            error.NameTooBig => debug.logger.err("Name too big! max name size is {}", .{account.name_max_length}),
             error.PermisonDenied => debug.logger.err("Can't read file, permison denied!", .{}),
             error.Invalid => debug.logger.err("Failed to read data due to invalid format!", .{}),
             error.EndOfFile => debug.logger.err("Unexpected end of file!", .{}),
-            else => unreachable
+            else => unreachable,
         }
         std.process.exit(1);
     };
-
 
     if (std.mem.eql(u8, command_name, "create")) {
         var userdata: account.AccountData = undefined;
@@ -119,22 +113,22 @@ pub fn main() !void {
             debug.logger.err("Signup failed!", .{});
             std.process.exit(1);
         }
-        panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+        panels.openUserPanelCLI(allocator, &userdata, &accounts, bankdata_file, bank_directory);
     } else if (std.mem.eql(u8, command_name, "open")) {
         var userdata: account.AccountData = undefined;
         const success = panels.loginCLI(allocator, username, accounts.items, bank_directory, &userdata) catch |err| {
             switch (err) {
                 error.AccountFileNotFound => debug.logger.err("Account Not Found!", .{}),
                 error.TextTooBig => debug.logger.err("Text Too Big!", .{}),
-                error.EndOfFile =>  debug.logger.err("Unexpected End Of File!", .{}),
+                error.EndOfFile => debug.logger.err("Unexpected End Of File!", .{}),
                 error.Undefined => debug.logger.err("Undefined Behiavor!", .{}),
                 error.Unexpected => debug.logger.err("Unexpected Error!", .{}),
-                else => debug.logger.err("{any}", .{err})
+                else => debug.logger.err("{any}", .{err}),
             }
             std.process.exit(1);
         };
         if (success) {
-            panels.openUserPanelCLI(allocator, &userdata, accounts.items, bank_directory);
+            panels.openUserPanelCLI(allocator, &userdata, &accounts, bankdata_file, bank_directory);
         } else {
             debug.logger.err("Invalid Username or Passowrd!", .{});
             std.process.exit(1);
@@ -148,8 +142,8 @@ pub fn main() !void {
             std.process.exit(1);
         }
         try account.AccountInfo.remove(bank_directory, bankdata_file, username.?, true);
-    }else {
+    } else {
         debug.logger.fatal("Unknown command: {s}", .{command_name});
         std.process.exit(1);
     }
-}   
+}
