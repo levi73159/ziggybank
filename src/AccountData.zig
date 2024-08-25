@@ -15,25 +15,24 @@ password: []const u8, // this will only be hashed we wont ever store the actual 
 balance: *f64, // this wont be encrypted
 file: std.fs.File,
 
-const UnexpectedError = error{Unexpected, Undefined};
+const UnexpectedError = error{ Unexpected, Undefined };
 
-pub const FileError = error {
+pub const FileError = error{
     OutOfMemory,
     DeviceBusy,
     FileTooBig,
     EndOfFile,
 } || UnexpectedError;
 
-pub const CreateError = error {
+pub const CreateError = error{
     AccountInfoMissing,
     AccountAlreadyExists,
 } || UnexpectedError || FileError;
 
 pub fn writeToFile(self: *const Self) FileError!void {
-    
     self.file.seekTo(0) catch |e| switch (e) {
         error.AccessDenied, error.Unseekable => return error.DeviceBusy,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     };
 
     const writer = self.file.writer();
@@ -42,7 +41,7 @@ pub fn writeToFile(self: *const Self) FileError!void {
     const err = write_block: {
         writer.writeAll(encrypted_email) catch |e| break :write_block e;
         writer.writeByte(0) catch |e| break :write_block e;
-        
+
         writer.writeAll(self.password) catch |e| break :write_block e;
         writer.writeByte(0) catch |e| break :write_block e;
 
@@ -55,8 +54,16 @@ pub fn writeToFile(self: *const Self) FileError!void {
         error.FileTooBig, error.NoSpaceLeft => return error.OutOfMemory,
         error.DeviceBusy => return error.DeviceBusy,
         error.DiskQuota, error.InputOutput, error.InvalidArgument => return error.Undefined,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     }
+}
+
+pub fn setEmail(account_data: *Self, email: []const u8) !void {
+    account_data.email = try allocator.dupe(u8, email);
+}
+
+pub fn setPassword(account_data: *Self, password: []const u8) !void {
+    account_data.password = try encrypter.hashBytes(allocator, password);
 }
 
 /// return `FileError` if failed to save
@@ -67,10 +74,7 @@ pub fn giveMoney(account_data: *Self, money: f64) FileError!void {
 
 // this functions will check if the user is an admin by using an array of usernames
 fn isAdmin(username: []const u8) bool {
-    const admins = [_][]const u8 {
-        "admin_levi",
-        "admin"
-    };
+    const admins = [_][]const u8{ "admin_levi", "admin" };
 
     for (admins) |admin| {
         if (std.mem.eql(u8, username, admin)) return true;
@@ -83,25 +87,16 @@ pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, passw
     const filename = std.fmt.allocPrint(allocator, "{}", .{info.id.*}) catch return CreateError.OutOfMemory;
     defer allocator.free(filename);
 
-
     const file = directory.createFile(filename, .{ .read = true, .mode = 0o666 }) catch |err| switch (err) {
         error.PathAlreadyExists, error.DeviceBusy => return error.AccountAlreadyExists,
         error.NameTooLong, error.FileTooBig, error.NoSpaceLeft => return error.OutOfMemory,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     };
     const dupe_email = allocator.dupe(u8, email) catch return error.OutOfMemory;
-    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!"))
-                                else allocator.dupe(u8, password) catch return error.OutOfMemory;
+    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!")) else allocator.dupe(u8, password) catch return error.OutOfMemory;
     const dupe_balance = allocator.create(f64) catch return error.OutOfMemory;
     dupe_balance.* = balance;
-    const account = Self{
-        .info = info,
-        .email = dupe_email,
-        .password = dupe_password,
-        .balance = dupe_balance,
-        .file = file,
-        .is_admin = isAdmin(info.name)
-    };
+    const account = Self{ .info = info, .email = dupe_email, .password = dupe_password, .balance = dupe_balance, .file = file, .is_admin = isAdmin(info.name) };
     try account.writeToFile();
     return account;
 }
@@ -113,30 +108,19 @@ pub fn createEmpty(directory: std.fs.Dir, info: AccountInfo, password: []const u
     const file = directory.createFile(filename, .{ .read = true, .mode = 0o666 }) catch |err| switch (err) {
         error.PathAlreadyExists, error.DeviceBusy => return error.AccountAlreadyExists,
         error.NameTooLong, error.FileTooBig, error.NoSpaceLeft => return error.OutOfMemory,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     };
 
     const email = allocator.dupe(u8, undefined_email) catch return error.OutOfMemory;
-    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!"))
-                                else allocator.dupe(u8, password) catch return error.OutOfMemory;    
+    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!")) else allocator.dupe(u8, password) catch return error.OutOfMemory;
     const balance = allocator.create(f64) catch return error.OutOfMemory;
     balance.* = 0;
-    const account = Self{
-        .info = info,
-        .email = email,
-        .password = dupe_password,
-        .balance = balance,
-        .file = file,
-        .is_admin = isAdmin(info.name)
-    };
+    const account = Self{ .info = info, .email = email, .password = dupe_password, .balance = balance, .file = file, .is_admin = isAdmin(info.name) };
     try account.writeToFile();
     return account;
 }
 
-pub const OpenError = error{
-    TextTooBig,
-    AccountFileNotFound
-} || UnexpectedError || AccountInfo.ParseError || FileError;
+pub const OpenError = error{ TextTooBig, AccountFileNotFound } || UnexpectedError || AccountInfo.ParseError || FileError;
 
 pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
     const filename = std.fmt.allocPrint(allocator, "{}", .{info.id.*}) catch return CreateError.OutOfMemory;
@@ -147,12 +131,12 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
         error.NameTooLong, error.FileTooBig, error.NoSpaceLeft => return error.OutOfMemory,
         error.FileNotFound => return error.AccountFileNotFound,
         error.BadPathName, error.Unexpected, error.AccessDenied => return error.Undefined,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     };
 
-    const read_buf = file.readToEndAlloc(allocator, 1024*1024) catch |err| switch (err) {
+    const read_buf = file.readToEndAlloc(allocator, 1024 * 1024) catch |err| switch (err) {
         error.FileTooBig => return error.FileTooBig,
-        else => return error.Unexpected
+        else => return error.Unexpected,
     };
     defer allocator.free(read_buf);
 
@@ -180,36 +164,29 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
         c = read_buf[i];
 
         if (i >= buffer_length) return error.TextTooBig;
-        password_buf[i-email_len] = c;
+        password_buf[i - email_len] = c;
     }
     const passowrd_len: usize = i - email_len;
     // all the buffers should have data and now we gotta decrypt it, but not the password
     const email: []u8 = getemail: {
-        const e = encrypter.decryptBytes(allocator, email_buf[0..email_len-1], true) catch @panic("Out of Memory!");
+        const e = encrypter.decryptBytes(allocator, email_buf[0 .. email_len - 1], true) catch @panic("Out of Memory!");
         if (std.mem.eql(u8, e, undefined_email))
             break :getemail &[0]u8{};
         break :getemail e;
     };
 
-    const password = allocator.dupe(u8, password_buf[0..passowrd_len-1]) catch return error.OutOfMemory;
+    const password = allocator.dupe(u8, password_buf[0 .. passowrd_len - 1]) catch return error.OutOfMemory;
 
     // now we need to get balance which is not encrypted
     const balance = allocator.create(f64) catch return error.OutOfMemory;
     balance.* = std.mem.bytesToValue(f64, read_buf[i..]);
 
-    return .{
-        .info = info,
-        .email = email,
-        .password = password,
-        .balance = balance,
-        .file = file,
-        .is_admin = isAdmin(info.name)
-    };
+    return .{ .info = info, .email = email, .password = password, .balance = balance, .file = file, .is_admin = isAdmin(info.name) };
 }
 
 /// Frees all the memory. must be called at end of use
 pub fn close(self: *Self) void {
-    self.file.close();                                          
+    self.file.close();
     allocator.free(self.email);
     allocator.free(self.password);
     allocator.destroy(self.balance);

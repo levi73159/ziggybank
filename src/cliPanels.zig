@@ -5,6 +5,14 @@ const std = @import("std");
 const hashEqual = @import("encrypter.zig").hashEqual;
 const UUID = @import("UUID.zig").UUID;
 
+const UserOptions = enum { transaction, widthdraw, info, update_account, exit };
+const AdminOptions = enum { give_money, take_money, add_user, remove_user, modify_account, list, clear, exit };
+
+// helpful function
+fn printAccount(account_data: *const account.AccountData) void {
+    debug.logger.print("Name: {s}, Email: {s}, Balance: {d:.2}, Admin: {}, UUID: {}\n", .{ account_data.info.name, account_data.email, account_data.balance.*, account_data.is_admin, account_data.info.id.* });
+}
+
 /// returns error.Exited if user types in '_exit'
 pub fn getAccountCLI(allocator: std.mem.Allocator, askstr: ?[]const u8, users_lookup: []account.AccountInfo) !account.AccountInfo {
     while (true) {
@@ -85,17 +93,17 @@ pub fn transactionCLI(allocator: std.mem.Allocator, account_data: *account.Accou
     }
 }
 
-const WithdrawOptions = enum(u64) {
-    // 10, 20, 50, 100, custom
-    x10 = 10,
-    x20 = 20,
-    x50 = 50,
-    x100 = 100,
-    all = 99999999,
-    custom = 0,
-};
-
 pub fn withdrawCLI(allocator: std.mem.Allocator, account_data: *account.AccountData) bool {
+    const WithdrawOptions = enum(u64) {
+        // 10, 20, 50, 100, custom
+        x10 = 10,
+        x20 = 20,
+        x50 = 50,
+        x100 = 100,
+        all = 99999999,
+        custom = 0,
+    };
+
     // get the amount of money we want to transaction
     const option = cli.getOption("Select Option", WithdrawOptions, cli.index_flag | cli.value_flag) catch |err| {
         debug.logger.err("Failed to get option due to {any}, please try again.", .{err});
@@ -175,8 +183,67 @@ pub fn withdrawCLI(allocator: std.mem.Allocator, account_data: *account.AccountD
     return true;
 }
 
-const UserOptions = enum { transaction, widthdraw, exit };
-const AdminOptions = enum { give_money, take_money, add_user, remove_uesr, list, clear, exit };
+pub fn updateAccountCLI(allocator: std.mem.Allocator, account_data: *account.AccountData) bool {
+    const UpdateAccountOptions = enum { email, password };
+
+    printAccount(account_data);
+
+    // get the amount of money we want to transaction
+    const option: UpdateAccountOptions = cli.getOption("Select Option", UpdateAccountOptions, cli.index_flag | cli.name_flag) catch |err| {
+        debug.logger.err("Failed to get option due to {any}, please try again.", .{err});
+        cli.pause();
+        return false;
+    };
+
+    switch (option) {
+        .email => {
+            const email = cli.readLineAlloc(allocator, "New Email: ", false, account.email_max_length) catch |err| {
+                switch (err) {
+                    error.StreamTooLong => {
+                        debug.logger.err("Email To Long! Try Again!", .{});
+                    },
+                    else => {
+                        debug.logger.err("Failed to get input due to: {any}! Try Again!", .{err});
+                    },
+                }
+                cli.pause();
+                return false;
+            };
+            defer allocator.free(email);
+            account_data.setEmail(email) catch |e| {
+                debug.logger.err("{any}", e); 
+                cli.pause();
+                return false;
+            };
+        },
+        .password => {
+            const password = cli.readLineAlloc(allocator, "New Password: ", true, account.name_max_length) catch |err| {
+                switch (err) {
+                    error.StreamTooLong => {
+                        debug.logger.err("Password To Long! Try Again!", .{});
+                    },
+                    else => {
+                        debug.logger.err("Failed to get input due to: {any}! Try Again!", .{err});
+                    },
+                }
+                cli.pause();
+                return false;
+            };
+            defer allocator.free(password);
+            account_data.setPassword(password) catch |e| {
+                debug.logger.err("{any}", e); 
+                cli.pause();
+                return false;
+            }; 
+        },
+    }
+    account_data.writeToFile() catch |err| {
+        debug.logger.fatal("Failed to update account due to: {any}", .{err});
+        cli.pause();
+        return false;
+    };
+    return true;
+}
 
 pub fn accountPanelCLI(allocator: std.mem.Allocator, account_data: *account.AccountData, users_lookup: []account.AccountInfo, directory: std.fs.Dir) void {
     while (true) {
@@ -192,7 +259,16 @@ pub fn accountPanelCLI(allocator: std.mem.Allocator, account_data: *account.Acco
         const success: bool = switch (option) {
             .transaction => transactionCLI(allocator, account_data, users_lookup, directory),
             .widthdraw => withdrawCLI(allocator, account_data),
-            .exit => return,
+            .info => blk: {
+                printAccount(account_data);
+                cli.pause();
+                break :blk true;
+            },
+            .update_account => updateAccountCLI(allocator, account_data),
+            .exit => {
+                cli.clear();
+                return; // exit
+            },
         };
         cli.clear();
         if (success) {
@@ -305,13 +381,102 @@ fn addUserCLI(allocator: std.mem.Allocator, users: *std.ArrayList(account.Accoun
     }
 }
 
+fn modifyAccount(allocator: std.mem.Allocator, directory: std.fs.Dir, users_lookup: []account.AccountInfo) void {
+    const ModifyAccountOptions = enum { email, balance, password };
+
+    const userinfo = getAccountCLI(allocator, "User: ", users_lookup) catch |err| switch (err) {
+        error.Exited => {
+            // aborting!
+            debug.logger.print("Aborting!\n", .{});
+            return;
+        },
+    };
+    var userdata = account.AccountData.open(directory, userinfo) catch |err| {
+        debug.logger.err("Failed to get AccountData due to: {any}!", .{err});
+        return;
+    };
+    defer userdata.close();
+
+    // print out the acount data
+    // modify account data
+    // write account data to file
+    printAccount(&userdata);
+
+    while (true) {
+        const option: ModifyAccountOptions = cli.getOption("Select Option", ModifyAccountOptions, cli.index_flag | cli.name_flag) catch |err| {
+            debug.logger.err("Hey! Failed to get input cause {any}, try again!", .{err});
+            continue;
+        };
+        switch (option) {
+            .email => {
+                const email = cli.readLineAlloc(allocator, "New Email: ", false, account.email_max_length) catch |err| {
+                    switch (err) {
+                        error.StreamTooLong => {
+                            debug.logger.err("Email To Long! Try Again!", .{});
+                        },
+                        else => {
+                            debug.logger.err("Failed to get input due to: {any}", .{err});
+                        },
+                    }
+                    continue;
+                };
+                defer allocator.free(email);
+                userdata.setEmail(email) catch |e| {
+                    debug.logger.err("{any}", e);
+                    return;
+                };
+            },
+            .balance => {
+                const balance: f64 = inloop: while (true) {
+                    const input = cli.readLineAlloc(allocator, "New Balance: ", false, 100) catch |err| {
+                        debug.logger.err("Failed to get input, due to: {any}! try again!", .{err});
+                        continue;
+                    };
+                    defer allocator.free(input);
+                    const float = std.fmt.parseFloat(f64, input) catch {
+                        debug.logger.fatal("FAILED TO PARSE FLOAT!", .{});
+                        debug.logger.info("Aborting!", .{});
+                        return;
+                    };
+                    break :inloop float;
+                };
+                userdata.balance.* = balance;
+            },
+            .password => {
+                const password = cli.readLineAlloc(allocator, "New Password: ", true, account.name_max_length) catch |err| {
+                    switch (err) {
+                        error.StreamTooLong => {
+                            debug.logger.err("Password To Long! Try Again!", .{});
+                        },
+                        else => {
+                            debug.logger.err("Failed to get input due to: {any}! Try Again!", .{err});
+                        },
+                    }
+                    continue;
+                };
+                defer allocator.free(password);
+                userdata.setPassword(password) catch |e| {
+                    debug.logger.err("{any}", e);
+                    return;
+                };
+            },
+        }
+        break;
+    }
+    userdata.writeToFile() catch |err| {
+        debug.logger.fatal("Failed to write to file due to: {any}!", .{err});
+        debug.logger.fatal("Aborting!", .{});
+        return;
+    };
+}
+
 fn handleAdminOptions(allocator: std.mem.Allocator, option: AdminOptions, account_data: *account.AccountData, users: *std.ArrayList(account.AccountInfo), data_file: std.fs.File, directory: std.fs.Dir) bool {
     switch (option) {
         .give_money, .take_money => {
             const user = getAccountCLI(allocator, "User: ", users.items) catch |err| switch (err) {
                 error.Exited => {
                     // aborting!
-                    debug.logger.print("Aborting!", .{});
+                    debug.logger.print("Aborting!\n", .{});
                     return false;
                 },
             };
@@ -319,6 +484,7 @@ fn handleAdminOptions(allocator: std.mem.Allocator, option: AdminOptions, accoun
                 debug.logger.err("Failed to get AccountData due to: {any}!", .{err});
                 return false;
             };
+            defer data.close();
 
             // get the amount of money we want to give
             const amount: f64 = blk: while (true) {
@@ -349,7 +515,7 @@ fn handleAdminOptions(allocator: std.mem.Allocator, option: AdminOptions, accoun
             }
         },
         .add_user => addUserCLI(allocator, users, data_file, directory),
-        .remove_uesr => {
+        .remove_user => {
             var user = getAccountCLI(allocator, "User: ", users.items) catch |err| switch (err) {
                 error.Exited => {
                     // aborting!
@@ -366,6 +532,7 @@ fn handleAdminOptions(allocator: std.mem.Allocator, option: AdminOptions, accoun
                 if (std.mem.eql(u8, user.name, u.name)) break :get_index @as(usize, i);
             } else unreachable);
         },
+        .modify_account => modifyAccount(allocator, directory, users.items),
         .clear => cli.clear(),
         .list => account.printUsersToScreen(users.items, directory, account_data),
         .exit => return true,
