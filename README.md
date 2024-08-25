@@ -6,8 +6,8 @@ A simple banking system made in ziglang
 ## Features
 
 - Create/Delete user
-- CLI for naviagaiting commands
-- Widthdraw/Transaciton
+- CLI for navigating commands
+- Withdraw/Transaction
 - Multiple Users
 
 ## Usage
