@@ -14,9 +14,5 @@ A simple banking system made in ziglang
 
 - **Create A User:** `./ziggybank create <username>`
 - **Delete A User:** `./ziggybank delete <username>`
-- **Open The AccountPanel:** `./ziigybank open <optional: username>`
-
-
-## Other
-
-To see the changelog of what change go to [CHANGELOG.md](CHANGELOG.md)
+- **Open The AccountPanel:** `./ziggybank open <optional: username>`
+- **Start the program** `./ziggybank start`
