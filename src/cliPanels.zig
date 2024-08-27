@@ -211,13 +211,13 @@ pub fn updateAccountCLI(allocator: std.mem.Allocator, account_data: *account.Acc
             };
             defer allocator.free(email);
             account_data.setEmail(email) catch |e| {
-                debug.logger.err("{any}", e); 
+                debug.logger.err("{any}", .{e}); 
                 cli.pause();
                 return false;
             };
         },
         .password => {
-            const password = cli.readLineAlloc(allocator, "New Password: ", true, account.name_max_length) catch |err| {
+            const old_pass = cli.readLineAlloc(allocator, "Old Password: ", true, account.name_max_length) catch |err| {
                 switch (err) {
                     error.StreamTooLong => {
                         debug.logger.err("Password To Long! Try Again!", .{});
@@ -229,9 +229,30 @@ pub fn updateAccountCLI(allocator: std.mem.Allocator, account_data: *account.Acc
                 cli.pause();
                 return false;
             };
-            defer allocator.free(password);
-            account_data.setPassword(password) catch |e| {
-                debug.logger.err("{any}", e); 
+            defer allocator.free(old_pass);
+
+            if (!(hashEqual(allocator, account_data.password, old_pass) catch |e| std.debug.panic("{any}", .{e}))) {
+                debug.logger.err("Password Does Not Match!", .{});
+                cli.pause();
+                return false;
+            }
+
+            const new_pass = cli.readLineAlloc(allocator, "New Password: ", true, account.name_max_length) catch |err| {
+                switch (err) {
+                    error.StreamTooLong => {
+                        debug.logger.err("Password To Long! Try Again!", .{});
+                    },
+                    else => {
+                        debug.logger.err("Failed to get input due to: {any}! Try Again!", .{err});
+                    },
+                }
+                cli.pause();
+                return false;
+            };
+            defer allocator.free(new_pass);
+            
+            account_data.setPassword(new_pass) catch |e| {
+                debug.logger.err("{any}", .{e}); 
                 cli.pause();
                 return false;
             }; 
@@ -422,7 +443,7 @@ fn modifyAccount(allocator: std.mem.Allocator, directory: std.fs.Dir, users_look
                 };
                 defer allocator.free(email);
                 userdata.setEmail(email) catch |e| {
-                    debug.logger.err("{any}", e);
+                    debug.logger.err("{any}", .{e});
                     return;
                 };
             },
@@ -456,7 +477,7 @@ fn modifyAccount(allocator: std.mem.Allocator, directory: std.fs.Dir, users_look
                 };
                 defer allocator.free(password);
                 userdata.setPassword(password) catch |e| {
-                    debug.logger.err("{any}", e);
+                    debug.logger.err("{any}", .{e});
                     return;
                 };
             },

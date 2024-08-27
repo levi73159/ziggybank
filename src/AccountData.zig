@@ -36,7 +36,7 @@ pub fn writeToFile(self: *const Self) FileError!void {
     };
 
     const writer = self.file.writer();
-    const encrypted_email = encrypter.encryptBytes(allocator, self.email, true) catch @panic("Out of Memory!");
+    const encrypted_email = encrypter.encryptBytes(allocator, self.email, true) catch |e| std.debug.panic("{any}", .{e});
     defer allocator.free(encrypted_email);
     const err = write_block: {
         writer.writeAll(encrypted_email) catch |e| break :write_block e;
@@ -93,7 +93,7 @@ pub fn create(directory: std.fs.Dir, info: AccountInfo, email: []const u8, passw
         else => return error.Unexpected,
     };
     const dupe_email = allocator.dupe(u8, email) catch return error.OutOfMemory;
-    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!")) else allocator.dupe(u8, password) catch return error.OutOfMemory;
+    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch |e| std.debug.panic("{any}", .{e})) else allocator.dupe(u8, password) catch return error.OutOfMemory;
     const dupe_balance = allocator.create(f64) catch return error.OutOfMemory;
     dupe_balance.* = balance;
     const account = Self{ .info = info, .email = dupe_email, .password = dupe_password, .balance = dupe_balance, .file = file, .is_admin = isAdmin(info.name) };
@@ -112,7 +112,7 @@ pub fn createEmpty(directory: std.fs.Dir, info: AccountInfo, password: []const u
     };
 
     const email = allocator.dupe(u8, undefined_email) catch return error.OutOfMemory;
-    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch @panic("Out of memory!")) else allocator.dupe(u8, password) catch return error.OutOfMemory;
+    const dupe_password = if (auto_hash) (encrypter.hashBytes(allocator, password) catch |e| std.debug.panic("{any}", .{e})) else allocator.dupe(u8, password) catch return error.OutOfMemory;
     const balance = allocator.create(f64) catch return error.OutOfMemory;
     balance.* = 0;
     const account = Self{ .info = info, .email = email, .password = dupe_password, .balance = balance, .file = file, .is_admin = isAdmin(info.name) };
@@ -169,7 +169,7 @@ pub fn open(directory: std.fs.Dir, info: AccountInfo) OpenError!Self {
     const passowrd_len: usize = i - email_len;
     // all the buffers should have data and now we gotta decrypt it, but not the password
     const email: []u8 = getemail: {
-        const e = encrypter.decryptBytes(allocator, email_buf[0 .. email_len - 1], true) catch @panic("Out of Memory!");
+        const e = encrypter.decryptBytes(allocator, email_buf[0 .. email_len - 1], true) catch |e| std.debug.panic("{any}", .{e});
         if (std.mem.eql(u8, e, undefined_email))
             break :getemail &[0]u8{};
         break :getemail e;
